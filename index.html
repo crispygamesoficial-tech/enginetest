@@ -2,31 +2,36 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Mini Roblox Studio</title>
+  <title>Mini Roblox Studio Prototype</title>
   <style>
     body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
-    #ui {
-      position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7);
-      color: white; padding: 10px; border-radius: 10px; width: 220px;
+    #toolbar {
+      position: absolute; top: 10px; left: 10px;
+      background: rgba(0,0,0,0.8); color: white; padding: 10px;
+      border-radius: 10px;
     }
-    button, input {
-      margin: 3px; padding: 5px; width: 95%; border: none; border-radius: 5px;
+    #explorer {
+      position: absolute; top: 10px; right: 10px; width: 220px;
+      background: rgba(0,0,0,0.8); color: white; padding: 10px;
+      border-radius: 10px; height: 90%; overflow-y: auto;
     }
-    label { display:block; margin-top: 5px; font-size: 14px; }
-    input[type="color"], input[type="checkbox"] { width: auto; }
+    button { margin: 3px; padding: 5px; border: none; border-radius: 5px; cursor: pointer; }
+    .part-item { cursor: pointer; margin: 2px; padding: 3px; border-radius: 4px; }
+    .part-item:hover { background: rgba(255,255,255,0.2); }
+    .selected { background: rgba(0,255,0,0.4); }
   </style>
 </head>
 <body>
-  <div id="ui">
-    <button onclick="createPart()">Criar Parte</button>
-    <button onclick="setMode('translate')">Mover</button>
-    <button onclick="setMode('rotate')">Girar</button>
-    <button onclick="setMode('scale')">Dimensionar</button>
-    <hr>
-    <h3>Propriedades</h3>
-    <label>Cor: <input type="color" id="propColor"></label>
-    <label>Transparência: <input type="range" id="propTrans" min="0" max="1" step="0.05"></label>
-    <label><input type="checkbox" id="propCollide"> CanCollide</label>
+  <div id="toolbar">
+    <button onclick="createPart('cube')">Cube</button>
+    <button onclick="createPart('sphere')">Sphere</button>
+    <button onclick="createPart('cylinder')">Cylinder</button>
+    <button onclick="groupAsRig()">Agrupar em Rig</button>
+  </div>
+
+  <div id="explorer">
+    <h3>Explorer</h3>
+    <div id="objectList"></div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.min.js"></script>
@@ -38,8 +43,8 @@
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87ceeb);
 
-    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(10, 10, 15);
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 1000);
+    camera.position.set(15,15,20);
 
     const renderer = new THREE.WebGLRenderer({antialias:true});
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -49,108 +54,118 @@
     const light = new THREE.DirectionalLight(0xffffff, 1);
     light.position.set(10,20,10);
     scene.add(light);
+    scene.add(new THREE.AmbientLight(0x404040));
 
-    // Baseplate
-    const baseplateGeo = new THREE.BoxGeometry(50, 1, 50);
-    const baseplateMat = new THREE.MeshStandardMaterial({color: 0x00ff00});
-    const baseplate = new THREE.Mesh(baseplateGeo, baseplateMat);
+    // Baseplate 3D
+    const baseplate = new THREE.Mesh(
+      new THREE.BoxGeometry(60,1,60),
+      new THREE.MeshStandardMaterial({color:0x00aa00})
+    );
     baseplate.position.y = -0.5;
-    baseplate.userData = {CanCollide:true};
+    baseplate.name = "Baseplate";
     scene.add(baseplate);
 
     // Grade
-    const grid = new THREE.GridHelper(50, 50);
+    const grid = new THREE.GridHelper(60,60);
     scene.add(grid);
 
-    // Controles de câmera
+    // Controles
     const orbit = new THREE.OrbitControls(camera, renderer.domElement);
     orbit.enableDamping = true;
     orbit.screenSpacePanning = true;
-    orbit.enablePan = true;
 
-    // Transform Controls
     const transform = new THREE.TransformControls(camera, renderer.domElement);
     scene.add(transform);
 
+    // Objetos criados
+    let objects = [];
     let selected = null;
 
-    // Criar parte
-    function createPart(){
-      const geometry = new THREE.BoxGeometry(2,2,2);
+    // Criar partes
+    function createPart(type){
+      let geometry;
+      if(type==="cube") geometry = new THREE.BoxGeometry(2,2,2);
+      if(type==="sphere") geometry = new THREE.SphereGeometry(1,16,16);
+      if(type==="cylinder") geometry = new THREE.CylinderGeometry(1,1,2,16);
       const material = new THREE.MeshStandardMaterial({color: Math.random()*0xffffff});
-      const part = new THREE.Mesh(geometry, material);
-      part.position.y = 1;
-      part.userData = {CanCollide:true}; // Propriedades extras
-      scene.add(part);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.y = 1;
+      mesh.name = type.charAt(0).toUpperCase()+type.slice(1);
+      scene.add(mesh);
+      objects.push(mesh);
+      updateExplorer();
     }
 
-    // Seleção com clique
+    // Explorer
+    function updateExplorer(){
+      const list = document.getElementById("objectList");
+      list.innerHTML = "";
+      objects.forEach((obj,i)=>{
+        const div = document.createElement("div");
+        div.className = "part-item"+(obj===selected?" selected":"");
+        div.textContent = obj.name || "Part";
+        div.onclick = ()=>{ selectObject(obj); };
+        list.appendChild(div);
+      });
+    }
+
+    function selectObject(obj){
+      if(selected) transform.detach();
+      selected = obj;
+      transform.attach(obj);
+      updateExplorer();
+    }
+
+    // Agrupar em Rig
+    function groupAsRig(){
+      if(objects.length===0) return;
+      const group = new THREE.Group();
+      group.name = "Rig";
+      objects.forEach(obj=>{
+        if(obj!==baseplate && obj.parent===scene){
+          scene.remove(obj);
+          group.add(obj);
+        }
+      });
+      scene.add(group);
+      objects = [group];
+      selected = group;
+      updateExplorer();
+    }
+
+    // Clique para selecionar
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     window.addEventListener('click',(event)=>{
-      if(event.target.tagName === "BUTTON" || event.target.tagName === "INPUT") return;
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(scene.children);
+      if(event.target.tagName==="BUTTON"||event.target.closest("#explorer")) return;
+      mouse.x = (event.clientX/window.innerWidth)*2-1;
+      mouse.y = -(event.clientY/window.innerHeight)*2+1;
+      raycaster.setFromCamera(mouse,camera);
+      const intersects = raycaster.intersectObjects(scene.children,true);
       if(intersects.length>0){
-        if(selected) transform.detach();
-        selected = intersects[0].object;
-        if(selected!==grid){
-          transform.attach(selected);
-          updatePropertiesUI();
-        }
+        let obj = intersects[0].object;
+        while(obj.parent && obj.parent!==scene && !(obj instanceof THREE.Group)) obj = obj.parent;
+        selectObject(obj);
       }
     });
 
-    // Modos (mover, girar, escalar)
-    function setMode(mode){
-      transform.setMode(mode);
-    }
-
-    // Propriedades
-    const propColor = document.getElementById("propColor");
-    const propTrans = document.getElementById("propTrans");
-    const propCollide = document.getElementById("propCollide");
-
-    function updatePropertiesUI(){
-      if(!selected || !selected.material) return;
-      propColor.value = "#"+selected.material.color.getHexString();
-      propTrans.value = selected.material.opacity ?? 1;
-      propCollide.checked = selected.userData.CanCollide;
-    }
-
-    propColor.addEventListener("input",()=>{
-      if(selected) selected.material.color.set(propColor.value);
-    });
-    propTrans.addEventListener("input",()=>{
-      if(selected){
-        selected.material.transparent = propTrans.value < 1;
-        selected.material.opacity = parseFloat(propTrans.value);
-      }
-    });
-    propCollide.addEventListener("change",()=>{
-      if(selected) selected.userData.CanCollide = propCollide.checked;
-    });
-
-    // Orbit trava durante transformação
-    transform.addEventListener('dragging-changed', function (event) {
-      orbit.enabled = !event.value;
+    // Orbit trava quando arrasta transform
+    transform.addEventListener('dragging-changed', e=>{
+      orbit.enabled = !e.value;
     });
 
     // Loop
     function animate(){
       requestAnimationFrame(animate);
       orbit.update();
-      renderer.render(scene, camera);
+      renderer.render(scene,camera);
     }
     animate();
 
-    // Resize
     window.addEventListener('resize', ()=>{
-      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.aspect = window.innerWidth/window.innerHeight;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(window.innerWidth,window.innerHeight);
     });
   </script>
 </body>
